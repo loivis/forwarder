@@ -2,13 +2,11 @@
 
 > A forwarder for forwarding kubernetes cluster service and pod programmatically.
 
-
 ## Installation
 
 ```bash
-go get github.com/anthhub/forwarder
+go get github.com/loivis/forwarder
 ```
-
 
 ## Usage
 
@@ -17,7 +15,7 @@ go get github.com/anthhub/forwarder
 ```go
 
 	import (
-		"github.com/anthhub/forwarder"
+		"github.com/loivis/forwarder"
 	)
 
 	options := []*forwarder.Option{
@@ -34,10 +32,10 @@ go get github.com/anthhub/forwarder
 			// namespace default is "default"
 			Namespace: "default"
 		},
-		{	
+		{
 			// if local port isn't provided, forwarder will generate a random port number
 			// LocalPort: 8081,
-			// 
+			//
 			// if target port isn't provided, forwarder find the first container port of the pod or service
 			// RemotePort: 80,
 			Source: "po/my-nginx-66b6c48dd5-ttdb2",
@@ -65,6 +63,7 @@ go get github.com/anthhub/forwarder
 ```
 
 ### forwarding embed kubeconfig
+
 ```go
 //go:embed kubeconfig
 var kubeconfigBytes []byte
