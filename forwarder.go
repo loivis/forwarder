@@ -155,6 +155,7 @@ func portForwardAPod(req *portForwardAPodRequest) (*portforward.PortForwarder, e
 	}
 
 	targetURL.Path = path.Join(
+		targetURL.Path,
 		"api", "v1",
 		"namespaces", req.Pod.Namespace,
 		"pods", req.Pod.Name,
