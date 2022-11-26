@@ -53,6 +53,10 @@ func parseOptions(options []*Option) ([]*Option, error) {
 			}
 		}
 
+		if o.Timeout == 0 {
+			o.Timeout = defaultTimeout
+		}
+
 		if o.PodName == "" && o.ServiceName == "" {
 			return nil, fmt.Errorf("please provide a name of pod or service")
 		}

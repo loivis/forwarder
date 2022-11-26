@@ -14,7 +14,7 @@ func TestBasic(t *testing.T) {
 	flag.StringVar(&kubecfg, "kubeconfig", "./kubeconfig", `
 
 	the path of kubeconfig, default is '~/.kube/config'
-	you can configure kubeconfig by environment variable: KUBECONFIG=./kubeconfig, 
+	you can configure kubeconfig by environment variable: KUBECONFIG=./kubeconfig,
 	or provide a option: --kubeconfig=./kubeconfig
 
 	`)

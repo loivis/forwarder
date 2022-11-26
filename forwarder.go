@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"sync"
 	"syscall"
+	"time"
 
 	"golang.org/x/sync/errgroup"
 	"k8s.io/cli-runtime/pkg/genericclioptions"
@@ -22,7 +23,10 @@ import (
 	"k8s.io/client-go/transport/spdy"
 )
 
-var once sync.Once
+var (
+	defaultTimeout = 1 * time.Second
+	once           sync.Once
+)
 
 // It is to forward port whith kubeconfig bytes.
 func WithForwardersEmbedConfig(ctx context.Context, options []*Option, kubeconfigBytes []byte) (*Result, error) {
@@ -98,11 +102,12 @@ func forwarders(ctx context.Context, options []*Option, config *restclient.Confi
 			ReadyCh:    readyCh,
 		}
 		g.Go(func() error {
-			pf, err := portForwardAPod(req)
+			errorCh := make(chan error, 1)
+			pf, err := portForwardAPod(req, errorCh)
 			if err != nil {
 				return err
 			}
-			carries[index] = &carry{StopCh: stopCh, ReadyCh: readyCh, PF: pf}
+			carries[index] = &carry{ErrorCh: errorCh, StopCh: stopCh, ReadyCh: readyCh, Timeout: newOptions[index].Timeout, PF: pf}
 			return nil
 		})
 	}
@@ -122,12 +127,18 @@ func forwarders(ctx context.Context, options []*Option, config *restclient.Confi
 		Ready: func() ([][]portforward.ForwardedPort, error) {
 			pfs := [][]portforward.ForwardedPort{}
 			for _, c := range carries {
-				<-c.ReadyCh
-				ports, err := c.PF.GetPorts()
-				if err != nil {
+				select {
+				case <-time.After(c.Timeout):
+					return nil, fmt.Errorf("timeout after %v", c.Timeout)
+				case err := <-c.ErrorCh:
 					return nil, err
+				case <-c.ReadyCh:
+					ports, err := c.PF.GetPorts()
+					if err != nil {
+						return nil, err
+					}
+					pfs = append(pfs, ports)
 				}
-				pfs = append(pfs, ports)
 			}
 			return pfs, nil
 		},
@@ -150,7 +161,7 @@ func forwarders(ctx context.Context, options []*Option, config *restclient.Confi
 }
 
 // It is to forward port, and return the forwarder.
-func portForwardAPod(req *portForwardAPodRequest) (*portforward.PortForwarder, error) {
+func portForwardAPod(req *portForwardAPodRequest, errorCh chan error) (*portforward.PortForwarder, error) {
 	targetURL, err := url.Parse(req.RestConfig.Host)
 	if err != nil {
 		return nil, err
@@ -177,7 +188,7 @@ func portForwardAPod(req *portForwardAPodRequest) (*portforward.PortForwarder, e
 
 	go func() {
 		if err := fw.ForwardPorts(); err != nil {
-			panic(err)
+			errorCh <- err
 		}
 	}()
 

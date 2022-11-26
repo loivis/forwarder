@@ -1,6 +1,8 @@
 package forwarder
 
 import (
+	"time"
+
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/cli-runtime/pkg/genericclioptions"
 	"k8s.io/client-go/rest"
@@ -18,8 +20,10 @@ type portForwardAPodRequest struct {
 }
 
 type carry struct {
+	ErrorCh chan error                 // ErrorCh delivers errors from goroutines for each port forwarding
 	StopCh  chan struct{}              // StopCh is the channel used to manage the port forward lifecycle
 	ReadyCh chan struct{}              // ReadyCh communicates when the tunnel is ready to receive traffic
+	Timeout time.Duration              // timeout taken from Option
 	PF      *portforward.PortForwarder // the instance of Portforwarder
 }
 
@@ -30,12 +34,13 @@ type PodOption struct {
 }
 
 type Option struct {
-	LocalPort   int    // the local port for forwarding
-	RemotePort  int    // the remote port port for forwarding
-	Namespace   string // the k8s namespace metadata
-	PodName     string // the k8s pod metadata
-	ServiceName string // the k8s service metadata
-	Source      string // the k8s source string, eg: svc/my-nginx-svc po/my-nginx-66b6c48dd5-ttdb2
+	LocalPort   int           // the local port for forwarding
+	RemotePort  int           // the remote port port for forwarding
+	Namespace   string        // the k8s namespace metadata
+	PodName     string        // the k8s pod metadata
+	ServiceName string        // the k8s service metadata
+	Source      string        // the k8s source string, eg: svc/my-nginx-svc po/my-nginx-66b6c48dd5-ttdb2
+	Timeout     time.Duration // returning error in case forwarding not ready after timeout duration
 }
 
 type Result struct {
