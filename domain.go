@@ -9,7 +9,7 @@ import (
 	"k8s.io/client-go/tools/portforward"
 )
 
-type portForwardAPodRequest struct {
+type request struct {
 	RestConfig *rest.Config                // RestConfig is the kubernetes config
 	Pod        v1.Pod                      // Pod is the selected pod for this port forwarding
 	LocalPort  int                         // LocalPort is the local port that will be selected to expose the PodPort
@@ -19,7 +19,7 @@ type portForwardAPodRequest struct {
 	ReadyCh    chan struct{}               // ReadyCh communicates when the tunnel is ready to receive traffic
 }
 
-type carry struct {
+type carrier struct {
 	ErrorCh chan error                 // ErrorCh delivers errors from goroutines for each port forwarding
 	StopCh  chan struct{}              // StopCh is the channel used to manage the port forward lifecycle
 	ReadyCh chan struct{}              // ReadyCh communicates when the tunnel is ready to receive traffic
@@ -43,7 +43,7 @@ type Option struct {
 	Timeout     time.Duration // returning error in case forwarding not ready after timeout duration
 }
 
-type Result struct {
+type Forwarders struct {
 	Close func()                                        // close the port forwarding
 	Ready func() ([][]portforward.ForwardedPort, error) // block till the forwarding ready
 	Wait  func()                                        // block and listen IOStreams close signal

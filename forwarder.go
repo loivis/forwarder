@@ -16,9 +16,9 @@ import (
 
 	"golang.org/x/sync/errgroup"
 	"k8s.io/cli-runtime/pkg/genericclioptions"
-	restclient "k8s.io/client-go/rest"
-	clientcmd "k8s.io/client-go/tools/clientcmd"
-	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
+	"k8s.io/client-go/rest"
+	ccmd "k8s.io/client-go/tools/clientcmd"
+	ccmdapi "k8s.io/client-go/tools/clientcmd/api"
 	"k8s.io/client-go/tools/portforward"
 	"k8s.io/client-go/transport/spdy"
 )
@@ -28,9 +28,9 @@ var (
 	once           sync.Once
 )
 
-// It is to forward port whith kubeconfig bytes.
-func WithForwardersEmbedConfig(ctx context.Context, options []*Option, kubeconfigBytes []byte) (*Result, error) {
-	kubeconfigGetter := func() (*clientcmdapi.Config, error) {
+// FromConfigBytes returns Forwarders from kube config bytes.
+func FromConfigBytes(ctx context.Context, options []*Option, kubeconfigBytes []byte) (*Forwarders, error) {
+	kubeconfigGetter := func() (*ccmdapi.Config, error) {
 		config, err := shimLoadConfig(kubeconfigBytes)
 		if err != nil {
 			return nil, err
@@ -38,7 +38,8 @@ func WithForwardersEmbedConfig(ctx context.Context, options []*Option, kubeconfi
 
 		return config, nil
 	}
-	config, err := clientcmd.BuildConfigFromKubeconfigGetter("", kubeconfigGetter)
+
+	config, err := ccmd.BuildConfigFromKubeconfigGetter("", kubeconfigGetter)
 	if err != nil {
 		return nil, err
 	}
@@ -46,13 +47,13 @@ func WithForwardersEmbedConfig(ctx context.Context, options []*Option, kubeconfi
 	return forwarders(ctx, options, config)
 }
 
-// It is to forward port for k8s cloud services.
-func WithForwarders(ctx context.Context, options []*Option, kubeconfigPath string) (*Result, error) {
+// FromConfigPath returns Forwarders from kube config path.
+func FromConfigPath(ctx context.Context, options []*Option, kubeconfigPath string) (*Forwarders, error) {
 	if kubeconfigPath == "" {
 		kubeconfigPath = filepath.Join(os.Getenv("HOME"), ".kube/config")
 	}
 
-	config, err := clientcmd.BuildConfigFromFlags("", kubeconfigPath)
+	config, err := ccmd.BuildConfigFromFlags("", kubeconfigPath)
 	if err != nil {
 		return nil, err
 	}
@@ -60,13 +61,13 @@ func WithForwarders(ctx context.Context, options []*Option, kubeconfigPath strin
 	return forwarders(ctx, options, config)
 }
 
-// It is to forward port with restclient.Config.
-func WithRestConfig(ctx context.Context, options []*Option, config *restclient.Config) (*Result, error) {
+// fromRestConfig returns Forwarders from k8s.io/client-go/rest.Config.
+func fromRestConfig(ctx context.Context, options []*Option, config *rest.Config) (*Forwarders, error) {
 	return forwarders(ctx, options, config)
 }
 
-// It is to forward port for k8s cloud services.
-func forwarders(ctx context.Context, options []*Option, config *restclient.Config) (*Result, error) {
+// forwarders returns Forwarders for kubernetes.
+func forwarders(ctx context.Context, options []*Option, config *rest.Config) (*Forwarders, error) {
 	newOptions, err := parseOptions(options)
 	if err != nil {
 		return nil, err
@@ -83,7 +84,7 @@ func forwarders(ctx context.Context, options []*Option, config *restclient.Confi
 		ErrOut: os.Stderr,
 	}
 
-	carries := make([]*carry, len(podOptions))
+	carriers := make([]*carrier, len(podOptions))
 
 	var g errgroup.Group
 
@@ -92,7 +93,7 @@ func forwarders(ctx context.Context, options []*Option, config *restclient.Confi
 		stopCh := make(chan struct{}, 1)
 		readyCh := make(chan struct{})
 
-		req := &portForwardAPodRequest{
+		req := &request{
 			RestConfig: config,
 			Pod:        option.Pod,
 			LocalPort:  option.LocalPort,
@@ -103,11 +104,11 @@ func forwarders(ctx context.Context, options []*Option, config *restclient.Confi
 		}
 		g.Go(func() error {
 			errorCh := make(chan error, 1)
-			pf, err := portForwardAPod(req, errorCh)
+			pf, err := forwardPort(req, errorCh)
 			if err != nil {
 				return err
 			}
-			carries[index] = &carry{ErrorCh: errorCh, StopCh: stopCh, ReadyCh: readyCh, Timeout: newOptions[index].Timeout, PF: pf}
+			carriers[index] = &carrier{ErrorCh: errorCh, StopCh: stopCh, ReadyCh: readyCh, Timeout: newOptions[index].Timeout, PF: pf}
 			return nil
 		})
 	}
@@ -116,17 +117,17 @@ func forwarders(ctx context.Context, options []*Option, config *restclient.Confi
 		return nil, err
 	}
 
-	ret := &Result{
+	result := &Forwarders{
 		Close: func() {
 			once.Do(func() {
-				for _, c := range carries {
+				for _, c := range carriers {
 					close(c.StopCh)
 				}
 			})
 		},
 		Ready: func() ([][]portforward.ForwardedPort, error) {
 			pfs := [][]portforward.ForwardedPort{}
-			for _, c := range carries {
+			for _, c := range carriers {
 				select {
 				case <-time.After(c.Timeout):
 					return nil, fmt.Errorf("timeout after %v", c.Timeout)
@@ -144,24 +145,24 @@ func forwarders(ctx context.Context, options []*Option, config *restclient.Confi
 		},
 	}
 
-	ret.Wait = func() {
+	result.Wait = func() {
 		sigs := make(chan os.Signal, 1)
 		signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 		<-sigs
 		fmt.Println("Bye...")
-		ret.Close()
+		result.Close()
 	}
 
 	go func() {
 		<-ctx.Done()
-		ret.Close()
+		result.Close()
 	}()
 
-	return ret, nil
+	return result, nil
 }
 
-// It is to forward port, and return the forwarder.
-func portForwardAPod(req *portForwardAPodRequest, errorCh chan error) (*portforward.PortForwarder, error) {
+// forwardPort forwards ports, and returns a forwarder.
+func forwardPort(req *request, errorCh chan error) (*portforward.PortForwarder, error) {
 	targetURL, err := url.Parse(req.RestConfig.Host)
 	if err != nil {
 		return nil, err
@@ -195,9 +196,9 @@ func portForwardAPod(req *portForwardAPodRequest, errorCh chan error) (*portforw
 	return fw, nil
 }
 
-// It is to transform kubeconfig bytes to clientcmdapi config.
-func shimLoadConfig(kubeconfigBytes []byte) (*clientcmdapi.Config, error) {
-	config, err := clientcmd.Load(kubeconfigBytes)
+// shimLoadConfig transforms kubeconfig bytes to clientcmdapi config.
+func shimLoadConfig(kubeconfigBytes []byte) (*ccmdapi.Config, error) {
+	config, err := ccmd.Load(kubeconfigBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -214,13 +215,13 @@ func shimLoadConfig(kubeconfigBytes []byte) (*clientcmdapi.Config, error) {
 	}
 
 	if config.AuthInfos == nil {
-		config.AuthInfos = map[string]*clientcmdapi.AuthInfo{}
+		config.AuthInfos = map[string]*ccmdapi.AuthInfo{}
 	}
 	if config.Clusters == nil {
-		config.Clusters = map[string]*clientcmdapi.Cluster{}
+		config.Clusters = map[string]*ccmdapi.Cluster{}
 	}
 	if config.Contexts == nil {
-		config.Contexts = map[string]*clientcmdapi.Context{}
+		config.Contexts = map[string]*ccmdapi.Context{}
 	}
 
 	return config, nil

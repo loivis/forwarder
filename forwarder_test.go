@@ -34,7 +34,7 @@ func TestBasic(t *testing.T) {
 		},
 	}
 
-	ret, err := WithForwarders(context.Background(), options, kubecfg)
+	ret, err := FromConfigPath(context.Background(), options, kubecfg)
 	if err != nil {
 		panic(err)
 	}
