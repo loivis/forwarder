@@ -3,6 +3,7 @@ package forwarder
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -74,7 +75,7 @@ func forwarders(ctx context.Context, options []*Option, config *restclient.Confi
 
 	stream := genericclioptions.IOStreams{
 		In:     os.Stdin,
-		Out:    os.Stdout,
+		Out:    io.Discard,
 		ErrOut: os.Stderr,
 	}
 
