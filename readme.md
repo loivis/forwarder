@@ -5,7 +5,7 @@
 ## Installation
 
 ```bash
-go get github.com/loivis/forwarder
+go get github.com/loivis/k8s-port-forward
 ```
 
 ## Usage
@@ -13,11 +13,13 @@ go get github.com/loivis/forwarder
 ### forwarding by kubeconfig path
 
 ```go
+package main
 
-	import (
-		"github.com/loivis/forwarder"
-	)
+import (
+	"github.com/loivis/k8s-port-forward"
+)
 
+func main() {
 	options := []*forwarder.Option{
 		{
 			// the local port for forwarding
@@ -44,27 +46,30 @@ go get github.com/loivis/forwarder
 
 	// it's to create a forwarder, and you need provide a path of kubeconfig
 	// the path of kubeconfig, default is "~/.kube/config"
-	ret, err := forwarder.WithForwarders(context.Background(), options, "./kubecfg")
+	fwds, err := forwarder.FromConfigPath(context.Background(), options, "./kubecfg")
 	if err != nil {
 		panic(err)
 	}
 	// remember to close the forwarding
-	defer ret.Close()
+	defer fwds.Close()
 	// wait forwarding ready
 	// the remote and local ports are listed
-	ports, err := ret.Ready()
+	ports, err := fwds.Ready()
 	if err != nil {
 		panic(err)
 	}
 	// ...
 
 	// if you want to block the goroutine and listen IOStreams close signal, you can do as following:
-	ret.Wait()
+	fwds.Wait()
+}
 ```
 
 ### forwarding embed kubeconfig
 
 ```go
+package main
+
 //go:embed kubeconfig
 var kubeconfigBytes []byte
 
@@ -77,7 +82,7 @@ func main() {
 		},
 	}
 	// use kubeconfig bytes to config forward
-	ret, err := forwarder.WithForwardersEmbedConfig(context.Background(), options, kubeconfigBytes)
+	ret, err := forwarder.FromConfigBytes(context.Background(), options, kubeconfigBytes)
 	if err != nil {
 		panic(err)
 	}

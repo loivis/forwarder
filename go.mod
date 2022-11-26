@@ -1,4 +1,4 @@
-module github.com/loivis/forwarder
+module github.com/loivis/k8s-port-forward
 
 go 1.19
 

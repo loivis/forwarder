@@ -5,7 +5,7 @@ import (
 	_ "embed"
 	"fmt"
 
-	"github.com/loivis/forwarder"
+	forwarder "github.com/loivis/k8s-port-forward"
 )
 
 //go:embed kubeconfig
