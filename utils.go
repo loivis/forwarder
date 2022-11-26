@@ -13,6 +13,10 @@ import (
 	restclient "k8s.io/client-go/rest"
 )
 
+var (
+	Quiet = true
+)
+
 func parseSource(source string) (*Option, error) {
 	list := strings.Split(source, "/")
 	if len(list) != 2 {
@@ -117,7 +121,9 @@ func handleOptions(ctx context.Context, options []*Option, config *restclient.Co
 			}
 			pod := pods.Items[0]
 
-			fmt.Printf("Forwarding service(%s) in namespace(%s) to pod(%s) ...\n", option.ServiceName, option.Namespace, pod.Name)
+			if !Quiet {
+				fmt.Printf("Forwarding service(%s) in namespace(%s) to pod(%s) ...\n", option.ServiceName, option.Namespace, pod.Name)
+			}
 
 			podOptions[index] = buildPodOption(option, &pod)
 			return nil
