@@ -112,20 +112,38 @@ func handleOptions(ctx context.Context, options []*Option, config *restclient.Co
 			}
 			label := strings.Join(labels, ",")
 
-			pods, err := clientset.CoreV1().Pods(option.Namespace).List(ctx, metav1.ListOptions{LabelSelector: label, Limit: 1})
+			pods, err := clientset.CoreV1().Pods(option.Namespace).List(ctx, metav1.ListOptions{LabelSelector: label})
 			if err != nil {
 				return err
 			}
 			if len(pods.Items) == 0 {
 				return fmt.Errorf("no such pods of the service of %v", option.ServiceName)
 			}
-			pod := pods.Items[0]
 
-			if !Quiet {
-				fmt.Printf("Forwarding service(%s) in namespace(%s) to pod(%s) ...\n", option.ServiceName, option.Namespace, pod.Name)
+			var pod *v1.Pod
+
+		findPod:
+			for _, item := range pods.Items {
+				for _, condition := range item.Status.Conditions {
+					if condition.Type == v1.PodReady {
+						if condition.Status == v1.ConditionTrue {
+							pod = &item
+							printf("pod(%s) selected in service(%s)\n", item.Name, option.ServiceName)
+							break findPod
+						}
+						printf("pod(%s) in service(%s) is not ready\n", item.Name, option.ServiceName)
+					}
+				}
 			}
 
-			podOptions[index] = buildPodOption(option, &pod)
+			if pod == nil {
+				return fmt.Errorf("ready pod not found in service(%s)", option.ServiceName)
+			}
+
+			printf("forwarding service(%s) in namespace(%s) to pod(%s) ...\n", option.ServiceName, option.Namespace, pod.Name)
+
+			podOptions[index] = buildPodOption(option, pod)
+
 			return nil
 		})
 	}
@@ -150,5 +168,11 @@ func buildPodOption(option *Option, pod *v1.Pod) *PodOption {
 				Namespace: pod.Namespace,
 			},
 		},
+	}
+}
+
+func printf(format string, v ...any) {
+	if !Quiet {
+		fmt.Printf(format+"\n", v...)
 	}
 }
